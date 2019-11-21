@@ -360,25 +360,33 @@ func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
 	if d.c.lmtp {
 		for d.c.rcptToCount > 0 {
-			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
-				if protoErr, ok := err.(*textproto.Error); ok {
-					return toSMTPErr(protoErr)
-				}
+			if err := d.readResponse(); err != nil {
 				return err
 			}
 			d.c.rcptToCount--
 		}
-		return nil
 	} else {
-		_, _, err := d.c.Text.ReadResponse(250)
-		if err != nil {
-			if protoErr, ok := err.(*textproto.Error); ok {
-				return toSMTPErr(protoErr)
-			}
+		if err := d.readResponse(); err != nil {
 			return err
 		}
-		return nil
 	}
+
+	return nil
+}
+
+func (d *dataCloser) readResponse() error {
+	code, message, err := d.c.Text.ReadResponse(250)
+
+	fmt.Printf("%d %s\n", code, message)
+
+	if err != nil {
+		if protoErr, ok := err.(*textproto.Error); ok {
+			return toSMTPErr(protoErr)
+		}
+		return err
+	}
+
+	return nil
 }
 
 // Data issues a DATA command to the server and returns a writer that

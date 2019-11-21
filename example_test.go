@@ -10,11 +10,12 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/smtp"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
+	"github.com/rhomber/go-smtp"
 )
 
 func ExampleDial() {

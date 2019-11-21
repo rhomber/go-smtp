@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
+	"github.com/rhomber/go-smtp"
 )
 
 func main() {
@@ -60,7 +60,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/emersion/go-smtp"
+	"github.com/rhomber/go-smtp"
 )
 
 // The Backend implements SMTP server methods.
