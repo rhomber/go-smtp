@@ -38,6 +38,8 @@ type Client struct {
 	didHello    bool   // whether we've said HELO/EHLO/LHLO
 	helloError  error  // the error from the hello
 	rcptToCount int    // number of recipients
+	// trace
+	traceEmitter TraceEmitter
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -48,7 +50,7 @@ func Dial(addr string) (*Client, error) {
 		return nil, err
 	}
 	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	return NewClient(conn, host, nil)
 }
 
 // DialTLS returns a new Client connected to an SMTP server via TLS at addr.
@@ -59,12 +61,12 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 		return nil, err
 	}
 	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	return NewClient(conn, host, nil)
 }
 
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
-func NewClient(conn net.Conn, host string) (*Client, error) {
+func NewClient(conn net.Conn, host string, traceEmitter TraceEmitter) (*Client, error) {
 	text := textproto.NewConn(conn)
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
@@ -75,14 +77,14 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 		return nil, err
 	}
 	_, isTLS := conn.(*tls.Conn)
-	c := &Client{Text: text, conn: conn, serverName: host, localName: "localhost", tls: isTLS}
+	c := &Client{Text: text, conn: conn, serverName: host, localName: "localhost", tls: isTLS, traceEmitter: traceEmitter}
 	return c, nil
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
 // existing connector and host as a server name to be used when authenticating.
 func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
-	c, err := NewClient(conn, host)
+	c, err := NewClient(conn, host, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +129,9 @@ func (c *Client) Hello(localName string) error {
 
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
-func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
+func (c *Client) cmd(facility SmtpFacility, expectCode int, format string, args ...interface{}) (int, string, error) {
+	c.traceTx(facility, fmt.Sprintf(format, args...))
+
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
@@ -135,6 +139,9 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
 	code, msg, err := c.Text.ReadResponse(expectCode)
+
+	c.traceRx(facility, code, msg)
+
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
 			smtpErr := toSMTPErr(protoErr)
@@ -149,7 +156,7 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 // server does not support ehlo.
 func (c *Client) helo() error {
 	c.ext = nil
-	_, _, err := c.cmd(250, "HELO %s", c.localName)
+	_, _, err := c.cmd(SmtpFacilityHelo, 250, "HELO %s", c.localName)
 	return err
 }
 
@@ -160,7 +167,7 @@ func (c *Client) ehlo() error {
 	if c.lmtp {
 		cmd = "LHLO"
 	}
-	_, msg, err := c.cmd(250, "%s %s", cmd, c.localName)
+	_, msg, err := c.cmd(SmtpFacilityHelo, 250, "%s %s", cmd, c.localName)
 	if err != nil {
 		return err
 	}
@@ -192,7 +199,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	_, _, err := c.cmd(220, "STARTTLS")
+	_, _, err := c.cmd(SmtpFacilityStartTLS, 220, "STARTTLS")
 	if err != nil {
 		return err
 	}
@@ -237,7 +244,7 @@ func (c *Client) Verify(addr string) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	_, _, err := c.cmd(250, "VRFY %s", addr)
+	_, _, err := c.cmd(SmtpFacilityVerify, 250, "VRFY %s", addr)
 	return err
 }
 
@@ -258,7 +265,7 @@ func (c *Client) Auth(a sasl.Client) error {
 	}
 	resp64 := make([]byte, encoding.EncodedLen(len(resp)))
 	encoding.Encode(resp64, resp)
-	code, msg64, err := c.cmd(0, strings.TrimSpace(fmt.Sprintf("AUTH %s %s", mech, resp64)))
+	code, msg64, err := c.cmd(SmtpFacilityAuth, 0, strings.TrimSpace(fmt.Sprintf("AUTH %s %s", mech, resp64)))
 	for err == nil {
 		var msg []byte
 		switch code {
@@ -279,7 +286,7 @@ func (c *Client) Auth(a sasl.Client) error {
 		}
 		if err != nil {
 			// abort the AUTH
-			c.cmd(501, "*")
+			c.cmd(SmtpFacilityAuth, 501, "*")
 			c.Quit()
 			break
 		}
@@ -288,7 +295,7 @@ func (c *Client) Auth(a sasl.Client) error {
 		}
 		resp64 = make([]byte, encoding.EncodedLen(len(resp)))
 		encoding.Encode(resp64, resp)
-		code, msg64, err = c.cmd(0, string(resp64))
+		code, msg64, err = c.cmd(SmtpFacilityAuth, 0, string(resp64))
 	}
 	return err
 }
@@ -331,7 +338,7 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		}
 	}
 
-	_, _, err := c.cmd(250, cmdStr, from)
+	_, _, err := c.cmd(SmtpFacilityMail, 250, cmdStr, from)
 	return err
 }
 
@@ -344,7 +351,7 @@ func (c *Client) Rcpt(to string) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
+	if _, _, err := c.cmd(SmtpFacilityMail, 25, "RCPT TO:<%s>", to); err != nil {
 		return err
 	}
 	c.rcptToCount++
@@ -396,7 +403,7 @@ func (d *dataCloser) readResponse() error {
 //
 // If server returns an error, it will be of type *SMTPError.
 func (c *Client) Data() (io.WriteCloser, error) {
-	_, _, err := c.cmd(354, "DATA")
+	_, _, err := c.cmd(SmtpFacilityData, 354, "DATA")
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +507,7 @@ func (c *Client) Reset() error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(250, "RSET"); err != nil {
+	if _, _, err := c.cmd(SmtpFacilityReset, 250, "RSET"); err != nil {
 		return err
 	}
 	c.rcptToCount = 0
@@ -513,7 +520,7 @@ func (c *Client) Noop() error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	_, _, err := c.cmd(250, "NOOP")
+	_, _, err := c.cmd(SmtpFacilityNoOp, 250, "NOOP")
 	return err
 }
 
@@ -522,7 +529,7 @@ func (c *Client) Quit() error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	_, _, err := c.cmd(221, "QUIT")
+	_, _, err := c.cmd(SmtpFacilityQuit, 221, "QUIT")
 	if err != nil {
 		return err
 	}
