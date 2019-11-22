@@ -12,6 +12,7 @@ const (
 	SmtpFacilityVerify    SmtpFacility = "VRFY"
 	SmtpFacilityAuth      SmtpFacility = "AUTH"
 	SmtpFacilityMail      SmtpFacility = "MAIL"
+	SmtpFacilityRcpt      SmtpFacility = "RCPT"
 	SmtpFacilityData      SmtpFacility = "DATA"
 	SmtpFacilityDataClose SmtpFacility = "DATA_CLOSE"
 	SmtpFacilityReset     SmtpFacility = "RSET"

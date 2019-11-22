@@ -350,7 +350,7 @@ func (c *Client) Rcpt(to string) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(SmtpFacilityMail, 25, "RCPT TO:<%s>", to); err != nil {
+	if _, _, err := c.cmd(SmtpFacilityRcpt, 25, "RCPT TO:<%s>", to); err != nil {
 		return err
 	}
 	c.rcptToCount++
