@@ -7,15 +7,16 @@ const (
 	TransmitModeTx TransmitMode = "TX"
 	TransmitModeRx TransmitMode = "RX"
 
-	SmtpFacilityHelo     SmtpFacility = "HELO"
-	SmtpFacilityStartTLS SmtpFacility = "STARTTLS"
-	SmtpFacilityVerify   SmtpFacility = "VRFY"
-	SmtpFacilityAuth     SmtpFacility = "AUTH"
-	SmtpFacilityMail     SmtpFacility = "MAIL"
-	SmtpFacilityData     SmtpFacility = "DATA"
-	SmtpFacilityReset    SmtpFacility = "RSET"
-	SmtpFacilityNoOp     SmtpFacility = "NOOP"
-	SmtpFacilityQuit     SmtpFacility = "QUIT"
+	SmtpFacilityHelo      SmtpFacility = "HELO"
+	SmtpFacilityStartTLS  SmtpFacility = "STARTTLS"
+	SmtpFacilityVerify    SmtpFacility = "VRFY"
+	SmtpFacilityAuth      SmtpFacility = "AUTH"
+	SmtpFacilityMail      SmtpFacility = "MAIL"
+	SmtpFacilityData      SmtpFacility = "DATA"
+	SmtpFacilityDataClose SmtpFacility = "DATA_CLOSE"
+	SmtpFacilityReset     SmtpFacility = "RSET"
+	SmtpFacilityNoOp      SmtpFacility = "NOOP"
+	SmtpFacilityQuit      SmtpFacility = "QUIT"
 )
 
 type TraceEmitter interface {

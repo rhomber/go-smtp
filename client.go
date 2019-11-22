@@ -9,13 +9,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/emersion/go-sasl"
 	"io"
 	"net"
 	"net/textproto"
 	"strconv"
 	"strings"
-
-	"github.com/emersion/go-sasl"
 )
 
 // A Client represents a client connection to an SMTP server.
@@ -384,7 +383,7 @@ func (d *dataCloser) Close() error {
 func (d *dataCloser) readResponse() error {
 	code, message, err := d.c.Text.ReadResponse(250)
 
-	fmt.Printf("%d %s\n", code, message)
+	d.c.traceRx(SmtpFacilityDataClose, code, message)
 
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
